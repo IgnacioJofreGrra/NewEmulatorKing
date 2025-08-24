@@ -1,0 +1,22 @@
+appId: com.example.psxlauncher
+productName: PSX Launcher
+files:
+  - dist/**
+  - electron/**
+extraMetadata:
+  main: electron/main.js
+
+win:
+  target: nsis
+  icon: public/icons/playstation.ico        # 👈 tu .ico (ya lo generamos)
+  artifactName: ${productName}-Setup-${version}.exe
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  allowElevation: false
+  installerIcon: public/icons/icono.ico
+  uninstallerIcon: public/icons/icono.ico
+  installerSidebar: build/installerSidebar.bmp
+  uninstallerSidebar: build/uninstallerSidebar.bmp
