@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, protocol, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, protocol, Menu, shell } from 'electron'
 import { fileURLToPath, pathToFileURL } from 'url'
 import { dirname, join, extname, basename } from 'path'
 import { spawn } from 'node:child_process'
@@ -11,7 +11,7 @@ const __dirname = dirname(__filename)
 let win
 const isDev = !app.isPackaged
 
-const IMAGE_EXTS = ['.cue', '.bin', '.iso', '.img', '.mdf', '.pbp', '.chd']
+const IMAGE_EXTS = ['.cue', '.bin', '.iso', '.img', '.mdf', '.pbp', '.chd', '.cdz']
 const COVER_EXTS = ['.jpg', '.jpeg', '.png', '.webp']
 // Normaliza el basename removiendo " (Track N)" al final, p.ej. "Juego (Track 01)" -> "Juego"
 function normalizeBase(base) {
@@ -148,10 +148,11 @@ async function scanDirRecursive(root) {
   }
 
   function pickBest(entries) {
-    // prioridad: cue > bin sin (Track N) > otros > primer track.bin
+    // prioridad: cdz > cue > bin sin (Track N) > otros > primer track.bin
+    const cdz = entries.find(e => e.ext === '.cdz')
+    if (cdz) return cdz
     const cue = entries.find(e => e.ext === '.cue')
     if (cue) return cue
-
     const nonTrackBin = entries.find(e => e.ext === '.bin' && !isTrackBin(e.base, e.ext))
     if (nonTrackBin) return nonTrackBin
 
@@ -310,5 +311,107 @@ ipcMain.handle('setCover', async (_e, romPath) => {
     return { ok: true, coverPath: dst }
   } catch (err) {
     return { ok: false, error: String(err) }
+  }
+})
+
+
+async function resolveBinFromCue(cuePath) {
+  try {
+    const txt = await fs.promises.readFile(cuePath, 'utf8')
+    const m = txt.match(/^\s*FILE\s+"([^"]+)"\s+/im)
+    if (!m) return null
+    return path.join(path.dirname(cuePath), m[1])
+  } catch { return null }
+}
+
+function findCdzTool(emulatorPath) {
+  const emuDir = path.dirname(emulatorPath)
+  const candidates = [
+    path.join(emuDir, 'utils', 'cdztool.exe'),
+    path.join(emuDir, 'cdztool.exe'),
+    path.join(emuDir, 'utils', 'cdztool'),   // por si acaso
+    path.join(emuDir, 'cdztool')
+  ]
+  for (const p of candidates) {
+    try {
+      const st = fs.statSync(p)
+      if (st.isFile()) return p
+    } catch { }
+  }
+  return null
+} 
+ipcMain.handle('compress:rom', async (_e, romPath) => {
+  const settings = await readSettings()
+  const tool = findCdzTool(settings.emulatorPath)
+  if (!tool) return { ok: false, error: 'No se encontró cdztool.exe' }
+
+  let input = romPath
+  const ext = path.extname(romPath).toLowerCase()
+  if (ext === '.cue') {
+    const bin = await resolveBinFromCue(romPath)
+    if (!bin) return { ok: false, error: 'No se pudo resolver el BIN desde el CUE' }
+    input = bin
+  }
+
+  const outPath = input.replace(/\.[^.]+$/, '.cdz')
+  const totalSize = (await fs.promises.stat(input)).size
+
+  return new Promise((resolve) => {
+    const child = spawn(tool, [input, outPath], {
+      cwd: path.dirname(settings.emulatorPath),
+      windowsHide: true,
+      stdio: ['ignore', 'ignore', 'ignore']
+    })
+
+    // interval para leer tamaño parcial del archivo .cdz
+    const timer = setInterval(async () => {
+      try {
+        const st = await fs.promises.stat(outPath)
+        const perc = Math.min(100, ((st.size / totalSize) * 100).toFixed(1))
+        win.webContents.send('compress:progress', perc)
+      } catch {}
+    }, 500)
+
+    child.on('exit', (code) => {
+      clearInterval(timer)
+      if (code === 0) {
+        win.webContents.send('compress:progress', 100)
+        resolve({ ok: true, outPath })
+      } else {
+        resolve({ ok: false, error: `cdztool salió con código ${code}` })
+      }
+    })
+  })
+})
+
+
+
+function homonymousCdzPath(filePath) {
+  const base = path.basename(filePath, path.extname(filePath))
+  return path.join(path.dirname(filePath), base + '.cdz')
+}
+ipcMain.handle('delete:file', async (_e, targetPath) => {
+  try {
+    const ext = path.extname(targetPath).toLowerCase()
+
+    // nunca borrar .cdz con este endpoint
+    if (ext === '.cdz') {
+      return { ok: false, error: 'Operación no permitida sobre .cdz' }
+    }
+
+    // exigir .cdz homónimo antes de borrar el original
+    const cdz = homonymousCdzPath(targetPath)
+    try {
+      const st = await fs.promises.stat(cdz)
+      if (!st.isFile()) return { ok: false, error: 'No existe .cdz homónimo' }
+    } catch {
+      return { ok: false, error: 'No existe .cdz homónimo' }
+    }
+
+    // mover a Papelera/Recycle Bin (seguro)
+    await shell.trashItem(targetPath)
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) }
   }
 })
