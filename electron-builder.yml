@@ -18,5 +18,5 @@ nsis:
   allowElevation: false
   installerIcon: public/icons/icono.ico
   uninstallerIcon: public/icons/icono.ico
-  installerSidebar: build/installerSidebar.bmp
-  uninstallerSidebar: build/uninstallerSidebar.bmp
+  #installerSidebar: build/installerSidebar.bmp
+  #uninstallerSidebar: build/uninstallerSidebar.bmp

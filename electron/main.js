@@ -239,6 +239,31 @@ ipcMain.handle('launchRom', async (_e, romPath) => {
     return { ok: false }
   }
 
+  // Verificar si falta d3dx9_26.dll en la carpeta de Windows
+  const system32 = process.env.WINDIR ? path.join(process.env.WINDIR, 'System32') : null;
+  let directxMissing = false;
+  if (system32) {
+    try {
+      await fs.promises.access(path.join(system32, 'd3dx9_26.dll'));
+    } catch {
+      directxMissing = true;
+    }
+  }
+
+  if (directxMissing) {
+    dialog.showMessageBox(win, {
+      type: 'error',
+      message: 'Falta el archivo d3dx9_26.dll (DirectX 9). Descarga e instala DirectX End-User Runtime desde el sitio oficial.',
+      detail: 'https://www.microsoft.com/en-us/download/details.aspx?id=35',
+      buttons: ['Abrir enlace', 'Cancelar']
+    }).then(result => {
+      if (result.response === 0) {
+        require('electron').shell.openExternal('https://www.microsoft.com/en-us/download/details.aspx?id=35');
+      }
+    });
+    return { ok: false }
+  }
+
   const args = []
   if (settings.fullscreen) args.push('-f')
   if (settings.extraArgs && String(settings.extraArgs).trim().length) {
