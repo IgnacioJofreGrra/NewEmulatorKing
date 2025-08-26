@@ -9,4 +9,5 @@ contextBridge.exposeInMainWorld('api', {
   launchRom: (romPath) => ipcRenderer.invoke('launchRom', romPath),
   renameRom: (oldPath, newName) => ipcRenderer.invoke('renameRom', { oldPath, newName }),
   setCover: (romPath) => ipcRenderer.invoke('setCover', romPath),
+  openFolder: (folderPath) => ipcRenderer.invoke('openFolder', folderPath),
 })

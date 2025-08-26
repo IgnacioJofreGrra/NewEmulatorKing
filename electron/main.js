@@ -1,4 +1,13 @@
-import { app, BrowserWindow, ipcMain, dialog, protocol, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, protocol, Menu, shell } from 'electron'
+// abrimos la carpeta en el explorador
+ipcMain.handle('openFolder', async (_e, folderPath) => {
+  try {
+    await shell.openPath(folderPath);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+});
 import { fileURLToPath, pathToFileURL } from 'url'
 import { dirname, join, extname, basename } from 'path'
 import { spawn } from 'node:child_process'

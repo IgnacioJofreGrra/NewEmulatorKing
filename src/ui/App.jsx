@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import path from 'path';
 import Wizard from './Wizard'
 import ControlsConfig from './ControlsConfig'
 import GamepadConfig from './GamepadConfig'
@@ -31,7 +30,9 @@ export default function App() {
         window.api.scanDirectory(s.lastDir).then(setItems)
       }
       if (s.emulatorPath) {
-        const biosDir = window.api.getBiosDir ? await window.api.getBiosDir() : path.join(path.dirname(s.emulatorPath), 'bios');
+        // reconstruí la ruta biosDir sin usar path para evitar errores en npm run dev
+        const exePath = s.emulatorPath;
+        const biosDir = exePath ? exePath.replace(/\\[^\\]+$/, '\\bios') : '';
         try {
           const biosFiles = await window.api.listBiosFiles(biosDir);
           setBiosMissing(!biosFiles.some(f => f.endsWith('.bin')));
@@ -53,7 +54,8 @@ export default function App() {
     return () => { if (typeof off === 'function') off() }
   }, [])
   const handleOpenBiosDir = async () => {
-    const biosDir = settings.emulatorPath ? path.join(path.dirname(settings.emulatorPath), 'bios') : '';
+    const exePath = settings.emulatorPath;
+    const biosDir = exePath ? exePath.replace(/\\[^\\]+$/, '\\bios') : '';
     if (biosDir && window.api.openFolder) {
       await window.api.openFolder(biosDir);
     }
