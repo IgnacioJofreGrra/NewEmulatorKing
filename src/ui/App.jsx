@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import path from 'path';
 import Wizard from './Wizard'
+import ControlsConfig from './ControlsConfig'
+import GamepadConfig from './GamepadConfig'
 
 export default function App() {
   const [settings, setSettings] = useState({ emulatorPath: '', lastDir: '', fullscreen: true, extraArgs: '' })
@@ -10,6 +13,9 @@ export default function App() {
   const [selected, setSelected] = useState(null)
   const [showSetup, setShowSetup] = useState(false);
   const [step, setStep] = useState(1);
+  const [showControls, setShowControls] = useState(false);
+  const [showGamepad, setShowGamepad] = useState(false);
+  const [biosMissing, setBiosMissing] = useState(false);
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase()
     if (!q) return items
@@ -17,12 +23,21 @@ export default function App() {
   }, [items, filter])
 
   useEffect(() => {
-    window.api.getSettings().then(s => {
+    window.api.getSettings().then(async s => {
       setSettings(s)
       if (!s.isConfigured) setShowSetup(true)
       if (s.lastDir) {
         setDir(s.lastDir)
         window.api.scanDirectory(s.lastDir).then(setItems)
+      }
+      if (s.emulatorPath) {
+        const biosDir = window.api.getBiosDir ? await window.api.getBiosDir() : path.join(path.dirname(s.emulatorPath), 'bios');
+        try {
+          const biosFiles = await window.api.listBiosFiles(biosDir);
+          setBiosMissing(!biosFiles.some(f => f.endsWith('.bin')));
+        } catch {
+          setBiosMissing(true);
+        }
       }
     })
     const off = window.api.onRefresh(async () => {
@@ -37,6 +52,12 @@ export default function App() {
     })
     return () => { if (typeof off === 'function') off() }
   }, [])
+  const handleOpenBiosDir = async () => {
+    const biosDir = settings.emulatorPath ? path.join(path.dirname(settings.emulatorPath), 'bios') : '';
+    if (biosDir && window.api.openFolder) {
+      await window.api.openFolder(biosDir);
+    }
+  };
 
   const pickDir = async () => {
     const d = await window.api.selectDirectory()
@@ -64,7 +85,6 @@ export default function App() {
   const onOpen = async (rom) => {
     await window.api.launchRom(rom.path)
   }
-  // Escuchar “Refrescar” del contexto
 
   return (
     <div className="h-screen w-screen flex">
@@ -91,7 +111,21 @@ export default function App() {
         </div>
       </div>
 
-      {/* Detail */}
+      {/* Alerta BIOS */}
+      {biosMissing && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center">
+          <div className="bg-zinc-950 border border-zinc-800 rounded-2xl shadow-xl p-8 max-w-md">
+            <div className="text-lg font-semibold mb-2">Falta el archivo BIOS</div>
+            <div className="text-sm text-zinc-400 mb-4">El emulador requiere un archivo BIOS (por ejemplo, SCPH1001.bin) en la carpeta <b>bios</b> junto al ejecutable.<br/>Agrega el archivo y vuelve a intentar.</div>
+            <button
+              onClick={handleOpenBiosDir}
+              className="px-4 py-2 bg-indigo-600 rounded-xl hover:bg-indigo-500 text-white"
+            >
+              Abrir carpeta BIOS
+            </button>
+          </div>
+        </div>
+      )}
       <div className="flex-1 flex flex-col">
 
         <div className="p-3 border-b border-zinc-800 flex items-center gap-3">
@@ -102,6 +136,33 @@ export default function App() {
             Modo instalación
           </button>
           <button onClick={pickEmulator} className="px-3 py-1.5 bg-indigo-600 rounded-xl hover:bg-indigo-500">Configurar psxfin.exe</button>
+          <button
+            onClick={() => setShowControls(true)}
+            className="px-3 py-1.5 bg-zinc-700 rounded-xl hover:bg-zinc-600"
+          >
+            Configurar controles
+          </button>
+          <button
+            onClick={() => setShowGamepad(true)}
+            className="px-3 py-1.5 bg-zinc-700 rounded-xl hover:bg-zinc-600"
+          >
+            Configurar gamepad
+          </button>
+      {showGamepad && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center">
+          <div>
+            <GamepadConfig />
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={() => setShowGamepad(false)}
+                className="px-4 py-2 bg-zinc-800 rounded-xl hover:bg-zinc-700 text-zinc-300"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={settings.fullscreen} onChange={toggleFullscreen} />
             Pantalla completa (-f)
@@ -121,7 +182,6 @@ export default function App() {
                 if (!newName) return
                 const res = await window.api.renameRom(selected.path, newName)
                 if (res.ok) {
-                  // refrescar listado
                   const list = await window.api.scanDirectory(dir)
                   setItems(list)
                 } else alert("Error al renombrar: " + res.error)
@@ -177,6 +237,21 @@ export default function App() {
           setShowSetup={setShowSetup}
           setItems={setItems}
         />
+      )}
+      {showControls && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center">
+          <div>
+            <ControlsConfig />
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={() => setShowControls(false)}
+                className="px-4 py-2 bg-zinc-800 rounded-xl hover:bg-zinc-700 text-zinc-300"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>
